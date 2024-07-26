@@ -1,120 +1,144 @@
 using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
+using TMPro; // Add this line to use TextMeshPro
 
 public class BallController : MonoBehaviour
 {
-    public Transform[] controlPoints = new Transform[3]; // The control points for the Bezier curve
-    private float t = 0f; // The parameter that goes from 0 to 1
-    public float initialSpeed = 0.2f; // Initial speed value for smoother movement
-    private float currentSpeed; // Current speed value
-
+    public float initialSpeed = 5f; // Initial speed of the ball
     private Rigidbody2D rb;
     public PhysicsMaterial2D noBounceMaterial;
     private PhysicsMaterial2D originalMaterial;
-    private bool isBouncing = false;
     private bool isGrounded = false; // Flag to check if the ball is grounded
 
     public PlayerController player1;
     public PlayerController player2;
+    public TMP_Text countdownText; // Reference to the TextMeshPro Text for countdown
+    public float countdownDuration = 3f; // Countdown duration
+
+    private PlayerController lastRoundWinner;
+    public ScoreManager scoreManager; // Reference to ScoreManager
 
     void Start()
     {
         rb = GetComponent<Rigidbody2D>();
         originalMaterial = GetComponent<Collider2D>().sharedMaterial;
-        currentSpeed = initialSpeed; // Set the initial speed
-        rb.gravityScale = 1;
 
-        if (controlPoints.Length == 3)
-        {
-            controlPoints[0].position = new Vector3(0, 0, 0);
-            controlPoints[1].position = new Vector3(2, 5, 0);
-            controlPoints[2].position = new Vector3(4, 0, 0);
-        }
+        // Ensure initial conditions are set
+        rb.gravityScale = 0; // Disable gravity to prevent the ball from falling
+        rb.velocity = Vector2.zero; // Ensure the ball has no initial velocity
+
+        // Start the first round with a countdown
+        StartCoroutine(StartFirstRound());
     }
 
-    void Update()
+    IEnumerator StartFirstRound()
     {
-        if (isBouncing && !isGrounded)
+        // Set the ball position to a fixed starting point
+        transform.position = new Vector3(0.19f, 4f, 0); // Example position; adjust as needed
+
+        // Ensure the ball does not move during the countdown
+        rb.gravityScale = 0; // Disable gravity
+        rb.velocity = Vector2.zero; // Ensure no velocity
+
+        // Display countdown before launching the ball
+        for (float i = countdownDuration; i > 0; i--)
         {
-            // Calculate velocity and update t based on the velocity
-            float velocity = currentSpeed * Time.deltaTime;
-            t += velocity;
-            if (t > 1f)
-            {
-                t = 0f; // Reset t to loop the movement, adjust as needed
-            }
-
-            // Calculate the position on the Bezier curve
-            Vector3 position = CalculateBezierPoint(t, controlPoints[0].position, controlPoints[1].position, controlPoints[2].position);
-            transform.position = position; // Use transform.position for smoother control
-
-            Debug.Log($"t: {t}, Velocity: {velocity}, Position: {position}"); 
+            countdownText.text = i.ToString();
+            yield return new WaitForSeconds(1f);
         }
+        countdownText.text = "Start!";
+        yield return new WaitForSeconds(1f);
+        countdownText.text = "";
+
+        // Launch the ball in a random direction for the first round
+        LaunchBall();
+    }
+
+    void LaunchBall()
+    {
+        Vector2 launchDirection = new Vector2(Random.Range(-1f, 1f), 1).normalized;
+        rb.velocity = launchDirection * initialSpeed;
+
+        // Enable gravity
+        rb.gravityScale = 1;
+    }
+
+    IEnumerator StartNewRound()
+    {
+        // Set the ball position above the player who won the previous round
+        Vector3 spawnPosition = lastRoundWinner.transform.position + Vector3.up * 7f; // Adjust offset if needed
+        transform.position = spawnPosition;
+
+        // Ensure the ball does not move during the countdown
+        rb.gravityScale = 0; // Disable gravity
+        rb.velocity = Vector2.zero; // Ensure no velocity
+
+        // Display countdown before letting the ball fall
+        for (float i = countdownDuration; i > 0; i--)
+        {
+            countdownText.text = i.ToString();
+            yield return new WaitForSeconds(1f);
+        }
+        countdownText.text = "Start!";
+        yield return new WaitForSeconds(1f);
+        countdownText.text = "";
+
+        // Enable gravity and let the ball fall
+        rb.gravityScale = 1;
+    }
+
+    void ResetPlayerPositions()
+    {
+        // Set player positions to their initial positions (if needed)
+        player1.transform.position = new Vector3(-7f, player1.transform.position.y, player1.transform.position.z);
+        player2.transform.position = new Vector3(7.19f, player2.transform.position.y, player2.transform.position.z);
     }
 
     void OnCollisionEnter2D(Collision2D collision)
     {
         if (collision.gameObject.CompareTag("Ground"))
         {
-            // Stop bouncing by changing the material to a no bounce material
-            GetComponent<Collider2D>().sharedMaterial = noBounceMaterial;
-            isBouncing = false; // Stop the Bezier movement
-            isGrounded = true; // Set isGrounded to true when grounded
-            rb.velocity = Vector2.zero; // Stop any residual velocity
+            if (!isGrounded)
+            {
+                // Stop bouncing by changing the material to a no bounce material
+                GetComponent<Collider2D>().sharedMaterial = noBounceMaterial;
+                rb.velocity = Vector2.zero; // Stop any residual velocity
+                isGrounded = true; // Set isGrounded to true when grounded
 
-            // Increase score for the other player
-            if (collision.transform.position.x < 0)
-            {
-                player2.IncreaseScore();
-                transform.position = player2.transform.position + Vector3.up; // Position the ball above player 2
+                // Determine the winner of the round
+                if (transform.position.x < 0)
+                {
+                    scoreManager.IncreaseScore(player2);
+                    lastRoundWinner = player2;
+                }
+                else
+                {
+                    scoreManager.IncreaseScore(player1);
+                    lastRoundWinner = player1;
+                }
+
+                // Reset the ball material
+                GetComponent<Collider2D>().sharedMaterial = originalMaterial;
+
+                // Disable gravity and stop the ball to start a new round
+                rb.gravityScale = 0;
+                rb.velocity = Vector2.zero;
+
+                // Reset player positions
+                ResetPlayerPositions();
+
+                // Start a new round with countdown
+                StartCoroutine(StartNewRound());
             }
-            else
-            {
-                player1.IncreaseScore();
-                transform.position = player1.transform.position + Vector3.up; // Position the ball above player 1
-            }
-        }
+        }                
         else if (collision.gameObject.CompareTag("Player") || collision.gameObject.CompareTag("Wall"))
         {
-            // Ensure the original bouncy material is applied
-            GetComponent<Collider2D>().sharedMaterial = originalMaterial;
-            isBouncing = true; // Start the Bezier movement
             isGrounded = false; // Reset isGrounded to false when colliding with player or wall
-            t = 0f; // Reset t when starting new bounce
-            rb.gravityScale = 1; // Turn gravity off when following the Bezier curve
 
             if (collision.gameObject.CompareTag("Player"))
             {
                 collision.gameObject.GetComponent<PlayerController>().InteractWithBall();
             }
         }
-    }
-
-    void OnCollisionExit2D(Collision2D collision)
-    {
-        // Ensure gravity is on when the ball is no longer touching the ground
-        if (collision.gameObject.CompareTag("Ground"))
-        {
-            rb.gravityScale = 1;
-        }
-    }
-
-
-
-    // Function to calculate a point on a Bezier curve (Quadratic Bezier Curve)
-    private Vector3 CalculateBezierPoint(float t, Vector3 p0, Vector3 p1, Vector3 p2)
-    {
-        float u = 1 - t;
-        float tt = t * t;
-        float uu = u * u;
-
-        Vector3 p = uu * p0; // First term
-        p += 2 * u * t * p1; // Second term
-        p += tt * p2; // Third term
-
-        Debug.Log($"Bezier Point: {p}");
-
-        return p;
     }
 }
