@@ -18,6 +18,9 @@ public class BallController : MonoBehaviour
     private PlayerController lastRoundWinner;
     public ScoreManager scoreManager; // Reference to ScoreManager
 
+    public GameObject guideObject; // Reference to the guide object
+    public float guideYPosition = 10f; // Fixed Y position for the guide object
+
     void Start()
     {
         rb = GetComponent<Rigidbody2D>();
@@ -26,6 +29,12 @@ public class BallController : MonoBehaviour
         // Ensure initial conditions are set
         rb.gravityScale = 0; // Disable gravity to prevent the ball from falling
         rb.velocity = Vector2.zero; // Ensure the ball has no initial velocity
+
+        // Hide the guide object at the start
+        if (guideObject != null)
+        {
+            guideObject.SetActive(false);
+        }
 
         // Start the first round with a countdown
         StartCoroutine(StartFirstRound());
@@ -85,6 +94,9 @@ public class BallController : MonoBehaviour
 
         // Enable gravity and let the ball fall
         rb.gravityScale = 1;
+
+        // Reset isGrounded flag to ensure proper collision detection
+        isGrounded = false;
     }
 
     void ResetPlayerPositions()
@@ -92,6 +104,26 @@ public class BallController : MonoBehaviour
         // Set player positions to their initial positions (if needed)
         player1.transform.position = new Vector3(-7f, player1.transform.position.y, player1.transform.position.z);
         player2.transform.position = new Vector3(7.19f, player2.transform.position.y, player2.transform.position.z);
+    }
+
+    void Update()
+    {
+        // Update the position of the guide object to have the same X coordinate as the ball
+        if (guideObject != null)
+        {
+            Vector3 guidePosition = guideObject.transform.position;
+            guidePosition.x = transform.position.x; // Match X coordinate
+            guidePosition.y = guideYPosition; // Fixed Y coordinate
+            guideObject.transform.position = guidePosition;
+
+            // Check if the ball is within the camera view
+            Vector3 viewportPosition = Camera.main.WorldToViewportPoint(transform.position);
+            bool isInViewport = viewportPosition.x >= 0 && viewportPosition.x <= 1 &&
+                                viewportPosition.y >= 0 && viewportPosition.y <= 1;
+
+            // Show or hide the guide object based on the ball's position
+            guideObject.SetActive(!isInViewport);
+        }
     }
 
     void OnCollisionEnter2D(Collision2D collision)
@@ -130,7 +162,7 @@ public class BallController : MonoBehaviour
                 // Start a new round with countdown
                 StartCoroutine(StartNewRound());
             }
-        }                
+        }
         else if (collision.gameObject.CompareTag("Player") || collision.gameObject.CompareTag("Wall"))
         {
             isGrounded = false; // Reset isGrounded to false when colliding with player or wall
